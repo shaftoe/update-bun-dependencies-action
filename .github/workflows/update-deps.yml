@@ -1,0 +1,39 @@
+name: Update Dependencies
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # weekly on Monday at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Update dependencies
+        id: update
+        uses: ./
+        with:
+          latest: 'true'
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          title: 'chore: update dependencies'
+          body: |
+            Updated packages:
+
+            ```json
+            ${{ steps.update.outputs.updated-packages }}
+            ```
+          branch: deps/update
+          commit-message: 'chore: update dependencies'
+          delete-branch: true

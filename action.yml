@@ -1,0 +1,26 @@
+name: 'Update Bun Dependencies'
+description: 'Update Bun project dependencies, resolving latest versions from the npm registry'
+author: 'Alex Boin'
+inputs:
+  working-directory:
+    description: 'Working directory containing package.json'
+    required: false
+    default: '.'
+  latest:
+    description: 'Resolve and install absolute latest versions (ignoring semver ranges in package.json)'
+    required: false
+    default: 'false'
+  registry-url:
+    description: 'npm registry URL'
+    required: false
+    default: 'https://registry.npmjs.org'
+  token:
+    description: 'Bearer token for private registries'
+    required: false
+    default: ''
+outputs:
+  updated-packages:
+    description: 'JSON map of packages that were updated { "name": { "from": "x", "to": "y" } }'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
