@@ -1,0 +1,48 @@
+name: 'Update Bun Dependencies'
+description: 'Update Bun project dependencies, resolving latest versions from the npm registry'
+author: 'Alex Boin'
+inputs:
+  working-directory:
+    description: 'Working directory containing package.json'
+    required: false
+    default: '.'
+  latest:
+    description: 'Resolve and install absolute latest versions (ignoring semver ranges in package.json)'
+    required: false
+    default: 'false'
+  registry-url:
+    description: 'npm registry URL'
+    required: false
+    default: 'https://registry.npmjs.org'
+  token:
+    description: 'Bearer token for private registries'
+    required: false
+    default: ''
+  create-pr:
+    description: 'Create a pull request with the updated files (uses GITHUB_TOKEN)'
+    required: false
+    default: 'false'
+  pr-branch:
+    description: 'Branch name for the pull request'
+    required: false
+    default: 'deps/update'
+  pr-title:
+    description: 'Title for the pull request'
+    required: false
+    default: 'chore: update dependencies'
+  pr-commit-message:
+    description: 'Commit message for the update'
+    required: false
+    default: 'chore: update dependencies'
+  pr-labels:
+    description: 'Comma-separated list of labels to add to the PR'
+    required: false
+    default: ''
+outputs:
+  updated-packages:
+    description: 'JSON map of packages that were updated { "name": { "from": "x", "to": "y" } }'
+  pr-url:
+    description: 'URL of the created pull request (empty if create-pr is false)'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
