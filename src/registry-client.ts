@@ -62,6 +62,15 @@ export function extractBaseVersion(version: string): string | null {
 }
 
 /**
+ * Extract the prefix characters from a version range string.
+ * For example: "^4.17.0" → "^", ">=1.0.0" → ">=", "4.17.0" → ""
+ */
+export function extractVersionPrefix(version: string): string {
+  const match = version.match(/^([^0-9]*)/);
+  return match ? match[1] : "";
+}
+
+/**
  * Resolve the latest version for a package from the npm registry.
  * Uses the dist-tags.latest field from the registry response.
  */

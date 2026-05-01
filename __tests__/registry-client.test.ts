@@ -3,6 +3,7 @@ import {
   collectDependencies,
   isNpmRegistryDep,
   extractBaseVersion,
+  extractVersionPrefix,
   resolveLatestVersion,
 } from "../src/registry-client.js";
 
@@ -76,6 +77,25 @@ describe("extractBaseVersion", () => {
     expect(extractBaseVersion("*")).toBeNull();
     expect(extractBaseVersion("latest")).toBeNull();
     expect(extractBaseVersion("")).toBeNull();
+  });
+});
+
+describe("extractVersionPrefix", () => {
+  it("extracts prefix from caret ranges", () => {
+    expect(extractVersionPrefix("^4.17.0")).toBe("^");
+  });
+
+  it("extracts prefix from tilde ranges", () => {
+    expect(extractVersionPrefix("~4.17.0")).toBe("~");
+  });
+
+  it("extracts prefix from comparison ranges", () => {
+    expect(extractVersionPrefix(">=1.0.0")).toBe(">=");
+    expect(extractVersionPrefix("<=2.0.0")).toBe("<=");
+  });
+
+  it("returns empty string for exact versions", () => {
+    expect(extractVersionPrefix("4.17.0")).toBe("");
   });
 });
 

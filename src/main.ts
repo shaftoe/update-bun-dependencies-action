@@ -6,6 +6,7 @@ import type { PackageJson, UpdateMap } from "./types.js";
 import {
   collectDependencies,
   extractBaseVersion,
+  extractVersionPrefix,
   resolveAllLatest,
 } from "./registry-client.js";
 import { createPullRequest } from "./pr-creator.js";
@@ -100,10 +101,28 @@ async function run(): Promise<void> {
     return;
   }
 
-  // Step 4: Run bun install with the specific versions
+  // Step 4: Update package.json with the new versions, then sync lockfile
   core.info(`Updating ${installArgs.length} packages...`);
-  const command = `bun install ${installArgs.map((arg) => `"${arg}"`).join(" ")}`;
-  execSync(command, { cwd: workingDirectory, stdio: "inherit" });
+
+  const depSections = [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+  ] as const;
+
+  for (const section of depSections) {
+    const sectionDeps = pkg[section];
+    if (!sectionDeps) continue;
+    for (const name of Object.keys(updates)) {
+      if (!(name in sectionDeps)) continue;
+      const prefix = extractVersionPrefix(sectionDeps[name]);
+      sectionDeps[name] = `${prefix}${updates[name].to}`;
+    }
+  }
+
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+  execSync("bun install", { cwd: workingDirectory, stdio: "inherit" });
 
   core.setOutput("updated-packages", JSON.stringify(updates));
   core.info(`Updated ${installArgs.length} packages`);
