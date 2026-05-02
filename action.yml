@@ -44,5 +44,5 @@ outputs:
   pr-url:
     description: 'URL of the created pull request (empty if create-pr is false)'
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'
