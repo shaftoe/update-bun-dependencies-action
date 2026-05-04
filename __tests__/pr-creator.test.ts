@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, afterAll } from "@jest/globals";
 import { buildBody, getRepo } from "../src/git-utils.js";
 import type { UpdateMap } from "../src/types.js";
 
