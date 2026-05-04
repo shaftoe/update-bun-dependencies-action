@@ -65,6 +65,7 @@ jobs:
           pr-title: 'chore: update dependencies'
           pr-commit-message: 'chore: update dependencies'
           pr-labels: 'dependencies,automated'
+          post-update-run: 'bun test'
 ```
 
 ## Inputs
@@ -80,6 +81,7 @@ jobs:
 | `pr-title` | `chore: update dependencies` | Title for the pull request |
 | `pr-commit-message` | `chore: update dependencies` | Commit message for the update |
 | `pr-labels` | `""` | Comma-separated list of labels to add to the PR |
+| `post-update-run` | `""` | Command to run after dependencies are updated but before the PR is created (e.g. `bun test`) |
 
 ## Outputs
 
