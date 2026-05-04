@@ -28473,6 +28473,13 @@ async function run() {
     execSync(command, { cwd: workingDirectory, stdio: "inherit" });
     setOutput("updated-packages", JSON.stringify(updates));
     info(`Updated ${installArgs.length} packages`);
+    // Step 4b: Run post-update command if provided
+    const postUpdateRun = getInput("post-update-run").trim();
+    if (postUpdateRun) {
+        info(`Running post-update command: ${postUpdateRun}`);
+        execSync(postUpdateRun, { cwd: workingDirectory, stdio: "inherit" });
+        info("Post-update command completed successfully");
+    }
     // Step 5: Create PR if requested
     if (!createPr) {
         setOutput("pr-url", "");

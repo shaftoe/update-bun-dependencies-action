@@ -108,6 +108,14 @@ async function run(): Promise<void> {
   core.setOutput("updated-packages", JSON.stringify(updates));
   core.info(`Updated ${installArgs.length} packages`);
 
+  // Step 4b: Run post-update command if provided
+  const postUpdateRun = core.getInput("post-update-run").trim();
+  if (postUpdateRun) {
+    core.info(`Running post-update command: ${postUpdateRun}`);
+    execSync(postUpdateRun, { cwd: workingDirectory, stdio: "inherit" });
+    core.info("Post-update command completed successfully");
+  }
+
   // Step 5: Create PR if requested
   if (!createPr) {
     core.setOutput("pr-url", "");

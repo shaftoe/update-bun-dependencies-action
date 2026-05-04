@@ -38,6 +38,10 @@ inputs:
     description: 'Comma-separated list of labels to add to the PR'
     required: false
     default: ''
+  post-update-run:
+    description: 'Command to run after dependencies are updated but before the PR is created (e.g. "bun test")'
+    required: false
+    default: ''
 outputs:
   updated-packages:
     description: 'JSON map of packages that were updated { "name": { "from": "x", "to": "y" } }'
