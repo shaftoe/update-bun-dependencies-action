@@ -9,6 +9,8 @@ export interface CreatePrOptions {
   title: string;
   commitMessage: string;
   labels: string[];
+  /** If true, append a unique suffix to the branch name to avoid collisions */
+  uniqueBranch?: boolean;
 }
 
 function gitConfigUser(cwd: string): void {
@@ -30,14 +32,45 @@ function gitConfigUser(cwd: string): void {
 export async function createPullRequest(
   opts: CreatePrOptions,
 ): Promise<string> {
-  const { workingDirectory, updates, branch, title, commitMessage, labels } =
+  const { workingDirectory, updates, title, commitMessage, labels } =
     opts;
+  let branch = opts.branch;
+
+  if (opts.uniqueBranch !== false) {
+    const suffix = process.env.GITHUB_RUN_ID ?? Date.now().toString();
+    branch = `${branch}-${suffix}`;
+    core.info(`Using unique branch name: ${branch}`);
+  }
 
   // Lazy import: @octokit/action is ESM-only and can't be imported by jest
   const { Octokit } = await import("@octokit/action");
 
   const baseBranch = gitCommand("rev-parse --abbrev-ref HEAD", workingDirectory);
   core.info(`Current branch: ${baseBranch}`);
+
+  // Close any existing open PRs for this branch prefix before creating a new one
+  const octokit = new Octokit();
+  const { owner, repo } = getRepo();
+
+  try {
+    const { data: existingPRs } = await octokit.rest.pulls.list({
+      owner,
+      repo,
+      head: `${owner}:${branch}`,
+      state: "open",
+    });
+    for (const existingPR of existingPRs) {
+      core.info(`Closing existing PR #${existingPR.number} for branch ${branch}`);
+      await octokit.rest.pulls.update({
+        owner,
+        repo,
+        pull_number: existingPR.number,
+        state: "closed",
+      });
+    }
+  } catch {
+    // Non-critical: proceed even if listing fails
+  }
 
   // Check if the branch already exists remotely
   const branchExists = gitCommand(
@@ -75,9 +108,6 @@ export async function createPullRequest(
   gitCommand(`checkout ${baseBranch}`, workingDirectory);
 
   // Create PR via Octokit
-  const octokit = new Octokit();
-  const { owner, repo } = getRepo();
-
   const body = buildBody(updates);
 
   const { data: pr } = await octokit.rest.pulls.create({
