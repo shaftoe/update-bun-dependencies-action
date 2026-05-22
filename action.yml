@@ -38,6 +38,13 @@ inputs:
     description: 'Comma-separated list of labels to add to the PR'
     required: false
     default: ''
+  pr-update-strategy:
+    description: >-
+      How to handle an existing PR/branch: "update" reuses the branch and
+      updates the existing PR (default); "create" creates a unique branch
+      per run.
+    required: false
+    default: 'update'
   post-update-run:
     description: 'Command to run after dependencies are updated but before the PR is created (e.g. "bun test")'
     required: false

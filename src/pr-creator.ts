@@ -2,6 +2,8 @@ import * as core from "@actions/core";
 import { getRepo, buildBody, gitCommand } from "./git-utils.js";
 import type { UpdateMap } from "./types.js";
 
+export type PrUpdateStrategy = "update" | "create";
+
 export interface CreatePrOptions {
   workingDirectory: string;
   updates: UpdateMap;
@@ -9,8 +11,8 @@ export interface CreatePrOptions {
   title: string;
   commitMessage: string;
   labels: string[];
-  /** If true, append a unique suffix to the branch name to avoid collisions */
-  uniqueBranch?: boolean;
+  /** Strategy: "update" reuse existing PR/branch, "create" makes unique branch per run */
+  prUpdateStrategy: PrUpdateStrategy;
 }
 
 function gitConfigUser(cwd: string): void {
@@ -34,13 +36,8 @@ export async function createPullRequest(
 ): Promise<string> {
   const { workingDirectory, updates, title, commitMessage, labels } =
     opts;
-  let branch = opts.branch;
-
-  if (opts.uniqueBranch !== false) {
-    const suffix = process.env.GITHUB_RUN_ID ?? Date.now().toString();
-    branch = `${branch}-${suffix}`;
-    core.info(`Using unique branch name: ${branch}`);
-  }
+  const branch = opts.branch;
+  const strategy = opts.prUpdateStrategy ?? "update";
 
   // Lazy import: @octokit/action is ESM-only and can't be imported by jest
   const { Octokit } = await import("@octokit/action");
@@ -48,48 +45,118 @@ export async function createPullRequest(
   const baseBranch = gitCommand("rev-parse --abbrev-ref HEAD", workingDirectory);
   core.info(`Current branch: ${baseBranch}`);
 
-  // Close any existing open PRs for this branch prefix before creating a new one
   const octokit = new Octokit();
   const { owner, repo } = getRepo();
 
-  try {
-    const { data: existingPRs } = await octokit.rest.pulls.list({
-      owner,
-      repo,
-      head: `${owner}:${branch}`,
-      state: "open",
-    });
-    for (const existingPR of existingPRs) {
-      core.info(`Closing existing PR #${existingPR.number} for branch ${branch}`);
+  // ── "update" strategy: reuse existing branch & PR ──────────────────────
+  if (strategy === "update") {
+    // Check for an existing open PR from this branch
+    let existingPR: { number: number; html_url: string } | undefined;
+    try {
+      const { data: existingPRs } = await octokit.rest.pulls.list({
+        owner,
+        repo,
+        head: `${owner}:${branch}`,
+        state: "open",
+      });
+      if (existingPRs.length > 0) {
+        existingPR = existingPRs[0];
+        core.info(`Found existing PR #${existingPR.number} for branch ${branch}`);
+      }
+    } catch {
+      // Non-critical: proceed as if no existing PR
+    }
+
+    // Check if the remote branch already exists
+    const remoteBranchExists = gitCommand(
+      `ls-remote --heads origin ${branch}`,
+      workingDirectory,
+    );
+
+    if (remoteBranchExists) {
+      // Reset the remote branch to current base, then apply changes
+      gitCommand(`checkout ${branch}`, workingDirectory);
+      gitCommand(`reset --hard ${baseBranch}`, workingDirectory);
+    } else {
+      gitCommand(`checkout -b ${branch}`, workingDirectory);
+    }
+
+    gitConfigUser(workingDirectory);
+    gitCommand("add -A", workingDirectory);
+
+    const status = gitCommand("status --porcelain", workingDirectory);
+    if (!status) {
+      core.info("No changes to commit — everything is already up to date");
+      gitCommand(`checkout ${baseBranch}`, workingDirectory);
+      return existingPR?.html_url ?? "";
+    }
+
+    gitCommand(
+      `commit -m "${commitMessage.replace(/"/g, '\\"')}"`,
+      workingDirectory,
+    );
+    gitCommand(`push --force origin ${branch}`, workingDirectory);
+    gitCommand(`checkout ${baseBranch}`, workingDirectory);
+
+    const body = buildBody(updates);
+
+    if (existingPR) {
+      // Update the existing PR's title and body
       await octokit.rest.pulls.update({
         owner,
         repo,
         pull_number: existingPR.number,
-        state: "closed",
+        title,
+        body,
+      });
+      core.info(`Updated existing PR #${existingPR.number}: ${existingPR.html_url}`);
+
+      // Ensure labels are set
+      if (labels.length > 0) {
+        await octokit.rest.issues.addLabels({
+          owner,
+          repo,
+          issue_number: existingPR.number,
+          labels,
+        });
+      }
+
+      return existingPR.html_url;
+    }
+
+    // No existing PR — create one
+    const { data: pr } = await octokit.rest.pulls.create({
+      owner,
+      repo,
+      title,
+      head: branch,
+      base: baseBranch,
+      body,
+    });
+
+    core.info(`Created PR #${pr.number}: ${pr.html_url}`);
+
+    if (labels.length > 0) {
+      await octokit.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: pr.number,
+        labels,
       });
     }
-  } catch {
-    // Non-critical: proceed even if listing fails
+
+    return pr.html_url;
   }
 
-  // Check if the branch already exists remotely
-  const branchExists = gitCommand(
-    `ls-remote --heads origin ${branch}`,
-    workingDirectory,
-  );
-  if (branchExists) {
-    core.info(`Branch "${branch}" already exists, deleting it`);
-    gitCommand(`push origin --delete ${branch}`, workingDirectory);
-  }
+  // ── "create" strategy: unique branch per run (legacy behavior) ─────────
+  const suffix = process.env.GITHUB_RUN_ID ?? Date.now().toString();
+  const uniqueBranch = `${branch}-${suffix}`;
+  core.info(`Using unique branch name: ${uniqueBranch}`);
 
-  // Create and switch to new branch
-  gitCommand(`checkout -b ${branch}`, workingDirectory);
+  gitCommand(`checkout -b ${uniqueBranch}`, workingDirectory);
   gitConfigUser(workingDirectory);
-
-  // Stage all changes (package.json, bun.lock, etc.)
   gitCommand("add -A", workingDirectory);
 
-  // Check if there's anything to commit
   const status = gitCommand("status --porcelain", workingDirectory);
   if (!status) {
     core.info("No changes to commit");
@@ -97,31 +164,26 @@ export async function createPullRequest(
     return "";
   }
 
-  // Commit and push
   gitCommand(
     `commit -m "${commitMessage.replace(/"/g, '\\"')}"`,
     workingDirectory,
   );
-  gitCommand(`push origin ${branch}`, workingDirectory);
-
-  // Switch back
+  gitCommand(`push origin ${uniqueBranch}`, workingDirectory);
   gitCommand(`checkout ${baseBranch}`, workingDirectory);
 
-  // Create PR via Octokit
   const body = buildBody(updates);
 
   const { data: pr } = await octokit.rest.pulls.create({
     owner,
     repo,
     title,
-    head: branch,
+    head: uniqueBranch,
     base: baseBranch,
     body,
   });
 
   core.info(`Created PR #${pr.number}: ${pr.html_url}`);
 
-  // Add labels if specified
   if (labels.length > 0) {
     await octokit.rest.issues.addLabels({
       owner,

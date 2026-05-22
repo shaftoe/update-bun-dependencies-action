@@ -1,0 +1,103 @@
+name: Update Bun Dependencies
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reusable workflow: call it from any repo to update Bun dependencies and
+# open (or update) a PR.  GITHUB_TOKEN is automatically available.
+#
+# Usage in an external repo:
+#
+#   jobs:
+#     deps:
+#       uses: shaftoe/update-bun-dependencies-action/.github/workflows/update-bun-dependencies.yml@v1
+#       with:
+#         post-update-run: 'bun test'
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Working directory containing package.json"
+        required: false
+        default: "."
+        type: string
+      latest:
+        description: "Resolve absolute latest versions (ignoring semver ranges)"
+        required: false
+        default: true
+        type: boolean
+      registry-url:
+        description: "npm registry URL"
+        required: false
+        default: "https://registry.npmjs.org"
+        type: string
+      create-pr:
+        description: "Create a pull request with the updated files"
+        required: false
+        default: true
+        type: boolean
+      pr-branch:
+        description: "Branch name for the pull request"
+        required: false
+        default: "deps/update"
+        type: string
+      pr-title:
+        description: "Title for the pull request"
+        required: false
+        default: "chore(deps): update dependencies"
+        type: string
+      pr-commit-message:
+        description: "Commit message for the update"
+        required: false
+        default: "chore(deps): update dependencies"
+        type: string
+      pr-labels:
+        description: "Comma-separated list of labels to add to the PR"
+        required: false
+        default: "dependencies,automated"
+        type: string
+      pr-update-strategy:
+        description: '"update" reuse existing PR/branch, "create" unique branch per run'
+        required: false
+        default: "update"
+        type: string
+      post-update-run:
+        description: "Command to run after updating deps but before creating the PR"
+        required: false
+        default: ""
+        type: string
+      bun-version:
+        description: "Bun version to install"
+        required: false
+        default: "latest"
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun-version }}
+
+      - name: Update dependencies
+        uses: shaftoe/update-bun-dependencies-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          latest: ${{ inputs.latest }}
+          registry-url: ${{ inputs.registry-url }}
+          create-pr: ${{ inputs.create-pr }}
+          pr-branch: ${{ inputs.pr-branch }}
+          pr-title: ${{ inputs.pr-title }}
+          pr-commit-message: ${{ inputs.pr-commit-message }}
+          pr-labels: ${{ inputs.pr-labels }}
+          pr-update-strategy: ${{ inputs.pr-update-strategy }}
+          post-update-run: ${{ inputs.post-update-run }}

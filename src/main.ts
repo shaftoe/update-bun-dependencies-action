@@ -122,6 +122,8 @@ async function run(): Promise<void> {
     return;
   }
 
+  const prUpdateStrategy = (core.getInput("pr-update-strategy").trim().toLowerCase() || "update") as import("./pr-creator.js").PrUpdateStrategy;
+
   const prUrl = await createPullRequest({
     workingDirectory,
     updates,
@@ -129,6 +131,7 @@ async function run(): Promise<void> {
     title: core.getInput("pr-title"),
     commitMessage: core.getInput("pr-commit-message"),
     labels: getStringListInput("pr-labels"),
+    prUpdateStrategy,
   });
 
   core.setOutput("pr-url", prUrl);

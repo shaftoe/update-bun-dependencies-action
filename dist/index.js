@@ -43596,40 +43596,88 @@ function gitConfigUser(cwd) {
 }
 async function createPullRequest(opts) {
   const { workingDirectory, updates, title, commitMessage, labels } = opts;
-  let branch = opts.branch;
-  if (opts.uniqueBranch !== false) {
-    const suffix = process.env.GITHUB_RUN_ID ?? Date.now().toString();
-    branch = `${branch}-${suffix}`;
-    info(`Using unique branch name: ${branch}`);
-  }
+  const branch = opts.branch;
+  const strategy = opts.prUpdateStrategy ?? "update";
   const { Octokit: Octokit3 } = await Promise.resolve().then(() => (init_dist_bundle6(), exports_dist_bundle));
   const baseBranch = gitCommand("rev-parse --abbrev-ref HEAD", workingDirectory);
   info(`Current branch: ${baseBranch}`);
   const octokit = new Octokit3;
   const { owner, repo } = getRepo();
-  try {
-    const { data: existingPRs } = await octokit.rest.pulls.list({
-      owner,
-      repo,
-      head: `${owner}:${branch}`,
-      state: "open"
-    });
-    for (const existingPR of existingPRs) {
-      info(`Closing existing PR #${existingPR.number} for branch ${branch}`);
+  if (strategy === "update") {
+    let existingPR;
+    try {
+      const { data: existingPRs } = await octokit.rest.pulls.list({
+        owner,
+        repo,
+        head: `${owner}:${branch}`,
+        state: "open"
+      });
+      if (existingPRs.length > 0) {
+        existingPR = existingPRs[0];
+        info(`Found existing PR #${existingPR.number} for branch ${branch}`);
+      }
+    } catch {}
+    const remoteBranchExists = gitCommand(`ls-remote --heads origin ${branch}`, workingDirectory);
+    if (remoteBranchExists) {
+      gitCommand(`checkout ${branch}`, workingDirectory);
+      gitCommand(`reset --hard ${baseBranch}`, workingDirectory);
+    } else {
+      gitCommand(`checkout -b ${branch}`, workingDirectory);
+    }
+    gitConfigUser(workingDirectory);
+    gitCommand("add -A", workingDirectory);
+    const status2 = gitCommand("status --porcelain", workingDirectory);
+    if (!status2) {
+      info("No changes to commit — everything is already up to date");
+      gitCommand(`checkout ${baseBranch}`, workingDirectory);
+      return existingPR?.html_url ?? "";
+    }
+    gitCommand(`commit -m "${commitMessage.replace(/"/g, "\\\"")}"`, workingDirectory);
+    gitCommand(`push --force origin ${branch}`, workingDirectory);
+    gitCommand(`checkout ${baseBranch}`, workingDirectory);
+    const body2 = buildBody(updates);
+    if (existingPR) {
       await octokit.rest.pulls.update({
         owner,
         repo,
         pull_number: existingPR.number,
-        state: "closed"
+        title,
+        body: body2
+      });
+      info(`Updated existing PR #${existingPR.number}: ${existingPR.html_url}`);
+      if (labels.length > 0) {
+        await octokit.rest.issues.addLabels({
+          owner,
+          repo,
+          issue_number: existingPR.number,
+          labels
+        });
+      }
+      return existingPR.html_url;
+    }
+    const { data: pr2 } = await octokit.rest.pulls.create({
+      owner,
+      repo,
+      title,
+      head: branch,
+      base: baseBranch,
+      body: body2
+    });
+    info(`Created PR #${pr2.number}: ${pr2.html_url}`);
+    if (labels.length > 0) {
+      await octokit.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: pr2.number,
+        labels
       });
     }
-  } catch {}
-  const branchExists = gitCommand(`ls-remote --heads origin ${branch}`, workingDirectory);
-  if (branchExists) {
-    info(`Branch "${branch}" already exists, deleting it`);
-    gitCommand(`push origin --delete ${branch}`, workingDirectory);
+    return pr2.html_url;
   }
-  gitCommand(`checkout -b ${branch}`, workingDirectory);
+  const suffix = process.env.GITHUB_RUN_ID ?? Date.now().toString();
+  const uniqueBranch = `${branch}-${suffix}`;
+  info(`Using unique branch name: ${uniqueBranch}`);
+  gitCommand(`checkout -b ${uniqueBranch}`, workingDirectory);
   gitConfigUser(workingDirectory);
   gitCommand("add -A", workingDirectory);
   const status = gitCommand("status --porcelain", workingDirectory);
@@ -43639,14 +43687,14 @@ async function createPullRequest(opts) {
     return "";
   }
   gitCommand(`commit -m "${commitMessage.replace(/"/g, "\\\"")}"`, workingDirectory);
-  gitCommand(`push origin ${branch}`, workingDirectory);
+  gitCommand(`push origin ${uniqueBranch}`, workingDirectory);
   gitCommand(`checkout ${baseBranch}`, workingDirectory);
   const body = buildBody(updates);
   const { data: pr } = await octokit.rest.pulls.create({
     owner,
     repo,
     title,
-    head: branch,
+    head: uniqueBranch,
     base: baseBranch,
     body
   });
@@ -43741,13 +43789,15 @@ async function run() {
     setOutput("pr-url", "");
     return;
   }
+  const prUpdateStrategy = getInput("pr-update-strategy").trim().toLowerCase() || "update";
   const prUrl = await createPullRequest({
     workingDirectory,
     updates,
     branch: getInput("pr-branch"),
     title: getInput("pr-title"),
     commitMessage: getInput("pr-commit-message"),
-    labels: getStringListInput("pr-labels")
+    labels: getStringListInput("pr-labels"),
+    prUpdateStrategy
   });
   setOutput("pr-url", prUrl);
 }
