@@ -67,19 +67,12 @@ export async function createPullRequest(
       // Non-critical: proceed as if no existing PR
     }
 
-    // Check if the remote branch already exists
-    const remoteBranchExists = gitCommand(
-      `ls-remote --heads origin ${branch}`,
-      workingDirectory,
-    );
-
-    if (remoteBranchExists) {
-      // Reset the remote branch to current base, then apply changes
-      gitCommand(`checkout ${branch}`, workingDirectory);
-      gitCommand(`reset --hard ${baseBranch}`, workingDirectory);
-    } else {
-      gitCommand(`checkout -b ${branch}`, workingDirectory);
-    }
+    // Create or reset the local branch from current HEAD.
+    // -B (uppercase) creates the branch if it doesn't exist or resets it if
+    //   it does — both pointing at the current commit.
+    // Uncommitted working-tree changes (bun install output) are preserved.
+    // The subsequent force-push overwrites whatever was on the remote.
+    gitCommand(`checkout -B ${branch}`, workingDirectory);
 
     gitConfigUser(workingDirectory);
     gitCommand("add -A", workingDirectory);
