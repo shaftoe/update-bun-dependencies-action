@@ -86,7 +86,7 @@ async function run(): Promise<void> {
     // Only include packages where latest differs from current
     if (resolved.version !== currentBase) {
       updates[name] = { from: currentBase, to: resolved.version };
-      installArgs.push(`${name}@${resolved.version}`);
+      installArgs.push(`${name}@^${resolved.version}`);
       core.info(`  ${name}: ${currentBase} → ${resolved.version}`);
     }
   }
